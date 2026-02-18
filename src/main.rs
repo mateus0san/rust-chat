@@ -1,17 +1,28 @@
 use std::{
-    io::{self, BufRead, BufReader, BufWriter, Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
     thread,
 };
 
 fn main() {
-    let listener = TcpListener::bind(server_address()).expect("ERROR: Failed to bind server");
+    let (listener, server_address) = start_server();
+
+    println!("Serving on {server_address}");
+
+    run_server(listener);
+}
+
+fn start_server() -> (TcpListener, SocketAddr) {
+    let addr = "0.0.0.0:1337";
+    eprintln!("Binding server at {addr}");
+    let listener = TcpListener::bind(addr).expect("ERROR: Failed to bind server");
     let server_address = listener
         .local_addr()
         .expect("ERROR: Failed to find server address");
 
-    println!("Serving on {server_address}");
+    (listener, server_address)
+}
 
+fn run_server(listener: TcpListener) {
     for stream in listener.incoming() {
         let stream = match stream {
             Ok(s) => s,
@@ -26,72 +37,23 @@ fn main() {
     }
 }
 
-fn server_address() -> String {
-    std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "0.0.0.0:1337".to_string())
-}
-
-struct Client {
-    username: String,
-    writer: TcpStream,
-    reader: BufReader<TcpStream>,
-    ip: String,
-}
-
-#[derive(Debug)]
-enum ClientError {
-    Io(io::Error),
-    Eof,
-}
-
-impl Client {
-    fn try_new(mut stream: TcpStream) -> Result<Self, ClientError> {
-        let ip = stream.peer_addr().map_err(ClientError::Io)?.to_string();
-
-        stream
-            .write_all("Type your username (max 16 characters): ".as_bytes())
-            .map_err(ClientError::Io)?;
-
-        const MAX_USERNAME_LEN: usize = 16;
-        let mut username = String::with_capacity(MAX_USERNAME_LEN);
-
-        let reader = stream.try_clone().map_err(ClientError::Io)?;
-        let mut buffer = BufReader::new(reader);
-        match buffer.read_line(&mut username) {
-            Ok(0) => Err(ClientError::Eof),
-            Err(e) => Err(ClientError::Io(e)),
-            Ok(_) => Ok(Client::new(username, stream, buffer, ip)),
-        }
-    }
-
-    fn new(username: String, writer: TcpStream, reader: BufReader<TcpStream>, ip: String) -> Self {
-        Self {
-            username,
-            writer,
-            reader,
-            ip,
-        }
-    }
-}
-
 fn handle_client(stream: TcpStream) {
-    let client = match Client::try_new(stream) {
+    let client = match chat::Client::try_new(stream) {
         Ok(client) => client,
-        Err(ClientError::Io(e)) => {
-            eprintln!("ERROR: client_handle std::io::Error {e}");
+        Err(chat::ClientError::IO(e)) => {
+            eprintln!("ERROR: from client_handle {e}");
             return;
         }
         Err(e) => {
-            eprint!("ERROR: client_handle");
-            dbg!(e);
+            eprintln!("ERROR: from client_handle {e:#?}");
             return;
         }
     };
 
     eprintln!(
         "New client {} at the address {}",
-        client.username, client.ip
+        client.username(),
+        client.ip()
     );
 
     // const MAX_BYTES: usize = 120;
@@ -116,4 +78,35 @@ fn handle_client(stream: TcpStream) {
 
     //     message.clear();
     // }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::time::Duration;
+
+    use super::*;
+
+    const ADDRESS: &str = "0.0.0.0:1337";
+
+    #[test]
+    fn handle_256_clients() {
+        const NUM_CONNECTIONS: usize = 256;
+        let mut v = vec![];
+
+        for _i in 0..NUM_CONNECTIONS {
+            let t = thread::spawn(move || {
+                let stream = TcpStream::connect(ADDRESS).expect("ERROR: Try start the server");
+
+                thread::sleep(Duration::from_secs(5));
+
+                stream.shutdown(std::net::Shutdown::Both).unwrap();
+            });
+            v.push(t);
+        }
+
+        for t in v {
+            t.join().unwrap();
+        }
+    }
 }
