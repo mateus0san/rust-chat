@@ -1,6 +1,25 @@
-use std::{sync::Arc, thread};
+use std::{collections::HashMap, sync::Arc, thread};
 
-use chat::{Connection, Server};
+use chat::{Client, Server};
+
+#[derive(Default)]
+struct Room {
+    clients: HashMap<usize, Client>,
+    capacity: usize,
+}
+
+impl Room {
+    fn new(capacity: usize) -> Self {
+        Self {
+            clients: HashMap::new(),
+            capacity,
+        }
+    }
+
+    fn is_full(&self) -> bool {
+        self.clients.len() == self.capacity
+    }
+}
 
 fn main() {
     let (server, receiver) = Server::bind_server();
@@ -10,13 +29,9 @@ fn main() {
         server.run();
     });
 
-    let mut counter = 0;
-    for client in receiver {
-        eprintln!("Receiver: new client {}", client.ip());
-        counter += 1;
+    let mut room = Room::new(42);
 
-        if counter == 5 {
-            *state_server.lock().unwrap() = Connection::Drop;
-        }
+    for mut client in receiver {
+        if room.is_full() {}
     }
 }
