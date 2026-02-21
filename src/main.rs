@@ -100,7 +100,7 @@ fn handle_connection(
     loop {
         let mut msg = String::with_capacity(120);
 
-        match reader.by_ref().take(128).read_line(&mut msg) {
+        match reader.by_ref().take(120).read_line(&mut msg) {
             Ok(0) => break Ok(end_normal),
             Err(e) => break Err(e),
             _ => {
