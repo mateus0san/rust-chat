@@ -1,21 +1,23 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
-    io::{self, BufRead, BufReader, Read},
+    io::{self, ErrorKind},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{self, Receiver},
     thread,
 };
 
-use chat::{Client, ConnectionEnd, Message};
+use chat::{Client, ConnectionEnd, Message, Reader};
 
 fn main() {
     let listener = TcpListener::bind("0.0.0.0:1337").expect("ERROR: could not start the server");
     let (sender, receiver) = mpsc::channel::<Message>();
 
+    eprintln!("Serving on 0.0.0.0:1337");
     thread::spawn(|| server(receiver));
 
     for stream in listener.incoming() {
         let sender = sender.clone();
+
         match stream {
             Err(e) => eprintln!("INFO: new stream returned an error {e}"),
             Ok(stream) => {
@@ -33,6 +35,7 @@ fn main() {
 
 fn server(receiver: Receiver<Message>) {
     let mut clients = HashMap::new();
+
     for msg in receiver {
         match msg {
             Message::Broadcast(msg) => new_message(msg, &mut clients),
@@ -74,25 +77,24 @@ fn handle_connection(
 
     if sender.send(Message::NewClient(client)).is_err() {
         return Ok(ConnectionEnd::ReceiverDropped);
-    }
+    };
 
-    let mut reader = BufReader::new(reader);
+    let mut buffer = Reader::new(reader, 120);
 
     let result = loop {
-        let mut msg = String::with_capacity(120);
-
-        match reader.by_ref().take(120).read_line(&mut msg) {
-            Ok(0) => break Ok(ConnectionEnd::Normal),
-            Err(e) => break Err(e),
-            _ => {
-                if sender.send(Message::Broadcast(msg)).is_err() {
-                    break Ok(ConnectionEnd::ReceiverDropped);
-                }
+        let msg = match buffer.read_line() {
+            Ok(msg) => msg,
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                break Ok(ConnectionEnd::Normal);
             }
+            Err(e) => break Err(e),
+        };
+
+        if sender.send(Message::Broadcast(msg)).is_err() {
+            break Ok(ConnectionEnd::ReceiverDropped);
         }
     };
 
     let _ = sender.send(Message::Drop(ip));
-
     result
 }

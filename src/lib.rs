@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 
 pub enum Message {
@@ -42,4 +42,33 @@ impl Client {
 pub enum ConnectionEnd {
     Normal,
     ReceiverDropped,
+}
+
+pub struct Reader {
+    reader: BufReader<TcpStream>,
+    max_len: u8,
+}
+
+impl Reader {
+    pub fn new(stream: TcpStream, max_len: u8) -> Self {
+        Self {
+            reader: BufReader::new(stream),
+            max_len,
+        }
+    }
+
+    pub fn read_line(&mut self) -> Result<String, io::Error> {
+        let mut msg = String::with_capacity(self.max_len as usize);
+
+        match self
+            .reader
+            .by_ref()
+            .take(self.max_len as u64)
+            .read_line(&mut msg)
+        {
+            Ok(0) => Err(io::Error::from(io::ErrorKind::UnexpectedEof)),
+            Err(e) => Err(e),
+            Ok(_) => Ok(msg),
+        }
+    }
 }
