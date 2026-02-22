@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::time::Duration;
 
 pub enum Message {
     Broadcast(String),
@@ -20,8 +21,11 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub fn try_new(stream: TcpStream) -> Result<Client, io::Error> {
+    pub fn try_new(stream: TcpStream) -> io::Result<Client> {
         let ip = stream.peer_addr()?;
+
+        stream.set_read_timeout(Some(Duration::from_mins(5)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(15)))?;
 
         Ok(Client::new(stream, ip))
     }
@@ -30,8 +34,8 @@ impl Client {
         Self { ip, writer }
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> std::io::Result<()> {
-        self.writer.write_all(buf)
+    pub fn write(&mut self, s: &str) -> io::Result<()> {
+        self.writer.write_all(s.as_bytes())
     }
 
     pub fn ip(&self) -> SocketAddr {

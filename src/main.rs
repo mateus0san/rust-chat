@@ -4,6 +4,7 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{self, Receiver},
     thread,
+    time::Duration,
 };
 
 use chat::{Client, ConnectionEnd, Message, Reader};
@@ -61,9 +62,8 @@ fn new_client(clients: &mut HashMap<SocketAddr, Client>, client: Client) -> Opti
 }
 
 fn new_message(msg: String, clients: &mut HashMap<SocketAddr, Client>) {
-    let msg = msg.as_bytes();
     let _removed_clients: HashMap<SocketAddr, Client> =
-        clients.extract_if(|_k, v| v.write(msg).is_err()).collect();
+        clients.extract_if(|_k, v| v.write(&msg).is_err()).collect();
 }
 
 fn handle_connection(
@@ -90,9 +90,13 @@ fn handle_connection(
             Err(e) => break Err(e),
         };
 
+        eprintln!("INFO: [{ip}] sent a new message {msg}");
         if sender.send(Message::Broadcast(msg)).is_err() {
             break Ok(ConnectionEnd::ReceiverDropped);
         }
+
+        // timeout to send the next message
+        thread::sleep(Duration::from_secs(1));
     };
 
     let _ = sender.send(Message::Drop(ip));
