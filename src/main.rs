@@ -1,10 +1,9 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
-    io::{self, ErrorKind},
+    io,
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{self, Receiver},
     thread,
-    time::Duration,
 };
 
 use chat::{Client, ConnectionEnd, Message, Reader};
@@ -23,7 +22,7 @@ fn main() {
             Err(e) => eprintln!("INFO: new stream returned an error {e}"),
             Ok(stream) => {
                 thread::spawn(|| match handle_connection(stream, sender) {
-                    Err(e) => eprintln!("INFO: connection failed: {e}"),
+                    Err(e) => eprintln!("INFO: connection failed: {e:#?}"),
                     Ok(ConnectionEnd::ReceiverDropped) => {
                         eprintln!("ERROR: Receiver Dropped, it should not happen")
                     }
@@ -79,24 +78,19 @@ fn handle_connection(
         return Ok(ConnectionEnd::ReceiverDropped);
     };
 
-    let mut buffer = Reader::new(reader, 120);
+    let mut buffer = Reader::new(reader);
 
     let result = loop {
-        let msg = match buffer.read_line() {
-            Ok(msg) => msg,
-            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                break Ok(ConnectionEnd::Normal);
-            }
+        let content = match buffer.read_frame() {
+            Ok(s) => s,
             Err(e) => break Err(e),
         };
 
-        eprintln!("INFO: [{ip}] sent a new message {msg}");
-        if sender.send(Message::Broadcast(msg)).is_err() {
+        // remove the unwrap later
+        let content = content.try_into().unwrap();
+        if sender.send(Message::Broadcast(content)).is_err() {
             break Ok(ConnectionEnd::ReceiverDropped);
         }
-
-        // timeout to send the next message
-        thread::sleep(Duration::from_secs(1));
     };
 
     let _ = sender.send(Message::Drop(ip));

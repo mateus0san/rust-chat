@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -24,7 +24,7 @@ impl Client {
     pub fn try_new(stream: TcpStream) -> io::Result<Client> {
         let ip = stream.peer_addr()?;
 
-        stream.set_read_timeout(Some(Duration::from_mins(5)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(15)))?;
         stream.set_write_timeout(Some(Duration::from_secs(15)))?;
 
         Ok(Client::new(stream, ip))
@@ -50,29 +50,38 @@ pub enum ConnectionEnd {
 
 pub struct Reader {
     reader: BufReader<TcpStream>,
-    max_len: u8,
 }
 
 impl Reader {
-    pub fn new(stream: TcpStream, max_len: u8) -> Self {
+    pub fn new(stream: TcpStream) -> Self {
         Self {
             reader: BufReader::new(stream),
-            max_len,
         }
     }
 
-    pub fn read_line(&mut self) -> Result<String, io::Error> {
-        let mut msg = String::with_capacity(self.max_len as usize);
+    pub fn read_frame(&mut self) -> io::Result<Vec<u8>> {
+        let len = self.read_header()?;
 
-        match self
-            .reader
-            .by_ref()
-            .take(self.max_len as u64)
-            .read_line(&mut msg)
-        {
-            Ok(0) => Err(io::Error::from(io::ErrorKind::UnexpectedEof)),
-            Err(e) => Err(e),
-            Ok(_) => Ok(msg),
+        if len > 8 * 1024 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Frame too large",
+            ));
         }
+
+        let mut frame = vec![0u8; len as usize];
+
+        self.reader.read_exact(&mut frame)?;
+
+        Ok(frame)
+    }
+
+    fn read_header(&mut self) -> io::Result<u32> {
+        // reading 4 bytes, content size
+        let mut header = [0u8; 4];
+
+        self.reader.read_exact(&mut header)?;
+
+        Ok(u32::from_be_bytes(header))
     }
 }
