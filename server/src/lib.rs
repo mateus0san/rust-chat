@@ -11,6 +11,7 @@ pub enum Message {
 }
 
 pub struct Client {
+    username: String,
     ip: SocketAddr,
     writer: FrameWriter<TcpStream>,
 }
@@ -35,6 +36,7 @@ impl Client {
 
     fn new(stream: TcpStream, ip: SocketAddr) -> Self {
         Self {
+            username: String::from("Guest"),
             ip,
             writer: FrameWriter::new(stream),
         }
@@ -47,6 +49,19 @@ impl Client {
 
     pub fn ip(&self) -> SocketAddr {
         self.ip
+    }
+
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn set_username(&mut self, username: String) -> Option<&str> {
+        if username.len() < 32 {
+            return None;
+        }
+
+        self.username = username;
+        Some(&self.username)
     }
 }
 

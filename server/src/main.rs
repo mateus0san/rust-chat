@@ -5,8 +5,8 @@ use std::{
     thread,
 };
 
-use sbmp::SBMPError;
 use sbmp::read::FrameReader;
+use sbmp::{ContentType, SBMPError};
 use server::{Client, ConnectionEnd, Message};
 
 fn main() {
@@ -74,15 +74,17 @@ fn handle_connection(
     sender: mpsc::Sender<Message>,
 ) -> Result<ConnectionEnd, SBMPError> {
     let reader = stream.try_clone()?;
+    let mut reader = FrameReader::new(reader);
 
-    let client = Client::try_new(stream)?;
-    let ip = client.ip();
+    let Some(client) = login(stream, &mut reader) else {
+        return Ok(ConnectionEnd::Normal);
+    };
+
+    let username = client.username();
 
     if sender.send(Message::NewClient(client)).is_err() {
         return Ok(ConnectionEnd::ReceiverDropped);
     };
-
-    let mut buffer = FrameReader::new(reader);
 
     let result = loop {
         let frame = match buffer.read_frame() {
@@ -98,4 +100,63 @@ fn handle_connection(
 
     let _ = sender.send(Message::Drop(ip));
     result
+}
+
+fn read_messages(reader: &mut FrameReader<TcpStream>, username: &str) -> Option<String> {
+    let frame = reader.read_frame() {
+        Ok(frame) => frame,
+        Err(e) => { eprintln!("ERROR: read_messages from {username}: {:#?}", e); return None;}
+    };
+
+    if frame.get_header().content_type() != ContentType::UTF8 {
+        return None;
+    }
+
+    let 
+} 
+
+fn login(stream: TcpStream, reader: &mut FrameReader<TcpStream>) -> Option<Client> {
+    let mut client = match Client::try_new(stream) {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("ERROR: login 'Client::try_new': {:#?}", e);
+            return None;
+        }
+    };
+
+    if let Err(e) = client.write("Type your username: ") {
+        eprintln!("ERROR: login 'client.write': {:#?}", e);
+        return None;
+    }
+
+    let frame = match reader.read_frame() {
+        Ok(frame) => frame,
+        Err(e) => {
+            eprintln!("ERROR: login 'reader.read_frame': {:#?}", e);
+            return None;
+        }
+    };
+
+    if frame.get_header().content_type() != ContentType::UTF8 {
+        let err = "ERROR: login: content type should be UTF8";
+        let _ = client.write(err);
+        eprintln!("{err}");
+        return None;
+    }
+
+    let username = match String::from_utf8(frame.get_payload()) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ERROR: login 'from_utf8' {:#?}", e);
+            client.write("Username invalid: bad encoding");
+            return None;
+        }
+    };
+
+
+    if client.set_username(username).is_none() {
+        client.write("Username should have less than 32 char");
+    };
+
+    Some(client)
 }
