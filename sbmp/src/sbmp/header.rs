@@ -43,8 +43,8 @@ impl Header {
         Ok(Header::new(version, content_type, content_length))
     }
 
-    pub fn content_type(&self) -> &ContentType {
-        &self.content_type
+    pub fn content_type(self) -> ContentType {
+        self.content_type
     }
 
     pub fn content_len(&self) -> usize {

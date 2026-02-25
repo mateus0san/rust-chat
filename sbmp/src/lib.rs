@@ -23,12 +23,17 @@ pub mod write {
 
         pub fn write_frame(&mut self, frame: Frame) -> Result<(), SBMPError> {
             let (header, payload) = frame.get();
-            let data: Vec<u8> = Vec::new();
+            let mut data: Vec<u8> = Vec::new();
+            let content_len = header.content_len() as u32;
 
-            // Maybe a function who returns a iter through all fields in header?
             data.push(header.version());
-            data.push(header.content_type());
-            data.push(header.content_len().to_be());
+            data.push(header.content_type() as u8);
+            data.extend(content_len.to_be_bytes().iter());
+
+            self.writer.write_all(&data)?;
+            self.writer.write_all(&payload)?;
+
+            Ok(())
         }
     }
 }

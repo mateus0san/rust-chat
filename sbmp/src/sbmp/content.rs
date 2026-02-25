@@ -1,5 +1,6 @@
 use crate::sbmp::SBMPError;
 
+#[derive(Copy, Clone)]
 #[repr(u8)]
 pub enum ContentType {
     UTF8,
