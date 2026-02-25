@@ -6,7 +6,7 @@
 
 pub mod sbmp;
 
-use crate::sbmp::{ContentType, Frame, Header, SBMPError};
+pub use crate::sbmp::{ContentType, Frame, Header, SBMPError};
 use std::io::{Read, Write};
 
 pub mod write {

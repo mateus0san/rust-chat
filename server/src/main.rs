@@ -1,20 +1,20 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
     net::{SocketAddr, TcpListener, TcpStream},
-    sync::mpsc::{self, Receiver},
+    sync::mpsc::{self, Receiver, Sender},
     thread,
 };
 
+use sbmp::SBMPError;
 use sbmp::read::FrameReader;
-use sbmp::sbmp::SBMPError;
 use server::{Client, ConnectionEnd, Message};
 
 fn main() {
     let listener = TcpListener::bind("0.0.0.0:1337").expect("ERROR: could not start the server");
     let (sender, receiver) = mpsc::channel::<Message>();
 
-    eprintln!("Serving on 0.0.0.0:1337");
     thread::spawn(|| server(receiver));
+    eprintln!("Serving on 0.0.0.0:1337");
 
     for stream in listener.incoming() {
         let sender = sender.clone();
@@ -22,13 +22,7 @@ fn main() {
         match stream {
             Err(e) => eprintln!("INFO: new stream returned an error {e}"),
             Ok(stream) => {
-                thread::spawn(|| match handle_connection(stream, sender) {
-                    Err(e) => eprintln!("INFO: connection failed: {e:#?}"),
-                    Ok(ConnectionEnd::ReceiverDropped) => {
-                        eprintln!("ERROR: Receiver Dropped, it should not happen")
-                    }
-                    _ => (),
-                });
+                thread::spawn(|| client(stream, sender));
             }
         }
     }
@@ -43,27 +37,36 @@ fn server(receiver: Receiver<Message>) {
             Message::Drop(ip) => {
                 clients.remove(&ip);
             }
-            Message::NewClient(client) => {
-                if let Some(new_client) = new_client(&mut clients, client) {
-                    eprintln!("INFO: New client {}", new_client.ip());
-                } else {
-                    eprintln!("INFO: Ip address of new client is already on the server.")
-                }
-            }
+            Message::NewClient(client) => new_client(&mut clients, client),
         }
-    }
-}
-
-fn new_client(clients: &mut HashMap<SocketAddr, Client>, client: Client) -> Option<&mut Client> {
-    match clients.entry(client.ip()) {
-        Entry::Occupied(_) => None,
-        Entry::Vacant(e) => Some(e.insert(client)),
     }
 }
 
 fn new_message(msg: String, clients: &mut HashMap<SocketAddr, Client>) {
     let _removed_clients: HashMap<SocketAddr, Client> =
         clients.extract_if(|_k, v| v.write(&msg).is_err()).collect();
+}
+
+fn new_client(clients: &mut HashMap<SocketAddr, Client>, client: Client) {
+    match clients.entry(client.ip()) {
+        Entry::Occupied(_) => {
+            eprintln!("INFO: Ip address of new client is already on the server.");
+        }
+        Entry::Vacant(e) => {
+            eprintln!("INFO: New client {}", client.ip());
+            e.insert(client);
+        }
+    }
+}
+
+fn client(stream: TcpStream, sender: Sender<Message>) {
+    match handle_connection(stream, sender) {
+        Err(e) => eprintln!("INFO: connection failed: {e:#?}"),
+        Ok(ConnectionEnd::ReceiverDropped) => {
+            eprintln!("ERROR: Receiver Dropped, it should not happen")
+        }
+        _ => (),
+    }
 }
 
 fn handle_connection(
