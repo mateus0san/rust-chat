@@ -4,14 +4,23 @@ pub struct Header {
     version: u8,
     content_type: ContentType,
     content_length: usize,
+    binary: Vec<u8>,
 }
 
 impl Header {
     fn new(version: u8, content_type: ContentType, content_length: usize) -> Self {
+        let mut header: Vec<u8> = Vec::new();
+        let content_len = content_length as u32;
+
+        header.push(version);
+        header.push(content_type as u8);
+        header.extend(content_len.to_be_bytes().iter());
+
         Self {
             version,
             content_type,
             content_length,
+            binary: header,
         }
     }
 
@@ -43,7 +52,7 @@ impl Header {
         Ok(Header::new(version, content_type, content_length))
     }
 
-    pub fn content_type(self) -> ContentType {
+    pub fn content_type(&self) -> ContentType {
         self.content_type
     }
 
@@ -53,5 +62,9 @@ impl Header {
 
     pub fn version(&self) -> u8 {
         self.version
+    }
+
+    pub fn as_binary(&self) -> &Vec<u8> {
+        &self.binary
     }
 }

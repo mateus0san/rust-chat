@@ -23,17 +23,24 @@ pub mod write {
 
         pub fn write_frame(&mut self, frame: Frame) -> Result<(), SBMPError> {
             let (header, payload) = frame.get();
-            let mut data: Vec<u8> = Vec::new();
-            let content_len = header.content_len() as u32;
+            let header = header.as_binary();
 
-            data.push(header.version());
-            data.push(header.content_type() as u8);
-            data.extend(content_len.to_be_bytes().iter());
-
-            self.writer.write_all(&data)?;
-            self.writer.write_all(&payload)?;
+            self.writer.write_all(header)?;
+            self.writer.write_all(payload)?;
 
             Ok(())
+        }
+
+        pub fn build_frame(
+            content_type: ContentType,
+            payload: Vec<u8>,
+        ) -> Result<Frame, SBMPError> {
+            let Ok(content_len) = u32::try_from(payload.len()) else {
+                return Err(SBMPError::LengthConversion);
+            };
+
+            let header = Header::try_new(sbmp::PROTOCOL_VERSION, content_type, content_len)?;
+            Frame::try_new(header, payload)
         }
     }
 }
