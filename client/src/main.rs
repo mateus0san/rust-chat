@@ -22,7 +22,13 @@ fn main() {
     });
 
     loop {
-        let frame = reader.read_frame().expect("remove this expect later");
+        let frame = match reader.read_frame() {
+            Ok(frame) => frame,
+            Err(e) => {
+                eprintln!("{:#?}", e);
+                continue;
+            }
+        };
         let payload = String::from_utf8(frame.get_payload()).expect("remove this expect later");
         println!("{payload}");
     }
