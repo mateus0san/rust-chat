@@ -7,11 +7,12 @@ use std::{
 
 use sbmp::read::FrameReader;
 use sbmp::{ContentType, Frame, SBMPError};
-use server::{Client, ConnectionEnd, Message};
+use server::{Client, ConnectionEnd, Message, ThreadPool};
 
 fn main() {
     let listener = TcpListener::bind("0.0.0.0:1337").expect("ERROR: could not start the server");
     let (sender, receiver) = mpsc::channel::<Message>();
+    let pool = ThreadPool::build(2);
 
     thread::spawn(|| server(receiver));
     eprintln!("Serving on 0.0.0.0:1337");
@@ -22,7 +23,9 @@ fn main() {
         match stream {
             Err(e) => eprintln!("INFO: new stream returned an error {e}"),
             Ok(stream) => {
-                thread::spawn(|| client(stream, sender));
+                pool.execute(|| {
+                    client(stream, sender);
+                });
             }
         }
     }
